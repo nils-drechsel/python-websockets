@@ -97,6 +97,10 @@ class WebSocketServer:
     async def send(self, message: str, sid: int, payload = None):
         logger.info(f"send {message} to sid {sid} with payload {payload}")
         raw = self.create_raw_content(message, payload)
+        
+        if sid not in self.sid_to_socket:
+            logger.warn(f"could not send message {message} as sid {sid} does not exist")
+            return
         socket = self.sid_to_socket[sid]
         await socket.send(raw)
 
@@ -107,7 +111,7 @@ class WebSocketServer:
 
         sids = self.sid_to_socket.keys() if room is None else self.room_to_sids[room]
         if except_sid is not None:
-            sids = list(filter(lambda client: client != except_sid, sids))
+            sids = list(filter(lambda other_sid: other_sid != except_sid and other_sid in self.sid_to_socket, sids))
         sockets = list(map(lambda sid: self.sid_to_socket[sid], sids))
         
         if (len(sockets) > 0):
@@ -139,6 +143,7 @@ class WebSocketServer:
         room = self.sid_to_room[sid]
         del(self.sid_to_room[sid])
         self.room_to_sids[room].remove(sid)
+        
     
     def run(self):
         
