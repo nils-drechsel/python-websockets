@@ -45,6 +45,13 @@ class WebSocketServer:
         
         sid = self.connect_socket(socket)
         
+        def handle_exception(loop, context):
+            self.disconnect_sid(sid)
+            
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(handle_exception)
+        
+        
         if self.on_connect_callback is not None:
             await self.on_connect_callback(sid)
             
@@ -82,7 +89,8 @@ class WebSocketServer:
     
     def disconnect_sid(self, sid):
         self.leave_room(sid)
-        del(self.sid_to_socket[sid])
+        if sid in self.sid_to_socket:
+            del(self.sid_to_socket[sid])
         
            
     def on_connect(self, callback):
@@ -150,6 +158,7 @@ class WebSocketServer:
         logger.info(f"starting server")
         start_server = websockets.serve(self.main_loop, self.config.host, self.config.port)        
         asyncio.get_event_loop().run_until_complete(start_server)
+        asyncio.get_event_loop()
         asyncio.get_event_loop().run_forever()
         
         
