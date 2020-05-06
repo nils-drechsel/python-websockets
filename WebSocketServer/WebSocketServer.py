@@ -108,9 +108,10 @@ class WebSocketServer:
         sids = self.sid_to_socket.keys() if room is None else self.room_to_sids[room]
         if except_sid is not None:
             sids = list(filter(lambda client: client != except_sid, sids))
-        sockets = list(map(lambda sid: self.id_to_socket[sid], sids))
-            
-        await asyncio.wait([socket.send(raw) for socket in sockets])
+        sockets = list(map(lambda sid: self.sid_to_socket[sid], sids))
+        
+        if (len(sockets) > 0):
+            await asyncio.wait([socket.send(raw) for socket in sockets])
         
         
     def create_raw_content(self, message: str, payload = None):
@@ -128,8 +129,8 @@ class WebSocketServer:
         if sid in self.sid_to_room:
             self.leave_room(sid)
             
-        self.room_to_ids[room].add(sid)
-        self.id_to_room[sid] = room
+        self.room_to_sids[room].add(sid)
+        self.sid_to_room[sid] = room
 
     def leave_room(self, sid):
         logger.info(f"leave room {sid}")
