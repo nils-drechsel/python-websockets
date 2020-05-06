@@ -8,3 +8,4 @@ Created on Tue May  5 11:52:50 2020
 
 
 from .WebSocketServer import WebSocketServer
+from .WebSocketServerConfig import WebSocketServerConfig

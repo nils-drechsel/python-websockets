@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: WebSocketServer
+Version: 0.1.0
+Summary: Extension of websockets to allow easier usage and rooms
+Home-page: https://github.com/nils-drechsel/python-websockets
+Author: Nils J. D. Drechsel
+Author-email: nils.drechsel@gmail.com
+License: UNKNOWN
+Description: # python-websockets
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown

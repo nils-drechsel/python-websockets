@@ -1,0 +1,9 @@
+README.md
+setup.py
+WebSocketServer/WebSocketServer.py
+WebSocketServer/WebSocketServerConfig.py
+WebSocketServer/__init__.py
+WebSocketServer.egg-info/PKG-INFO
+WebSocketServer.egg-info/SOURCES.txt
+WebSocketServer.egg-info/dependency_links.txt
+WebSocketServer.egg-info/top_level.txt

@@ -16,15 +16,16 @@ logger = logging.getLogger(__name__)
 
 class WebSocketServer:
     
-    def __init__(self):
-        self.id_to_socket = {}
-        self.id_to_room = {}
-        self.room_to_ids={}
+    def __init__(self, config):
+        self.sid_to_socket = {}
+        self.sid_to_room = {}
+        self.room_to_sids={}
         
         self.active = True
         self.on_connect_callback = None
         self.on_disconnect_callback = None
         self.on_message_callbacks={}
+        self.config = config
         
         
     def __socket_hash(self, socket):
@@ -41,32 +42,48 @@ class WebSocketServer:
     
     
     async def main_loop(self, socket, path):
-        id = self.__socket_hash(socket)
-        logger.debug(f"new connection {socket.remote_address} with id {id}")
-        self.id_to_socket[id] = socket
-        if self.on_connect is not None:
-            self.on_connect(id)
+        
+        sid = self.connect_socket(socket)
+        
+        if self.on_connect_callback is not None:
+            await self.on_connect_callback(sid)
+            
         while self.active:
             try:
                 raw = await socket.recv()
-                data = json.load(raw)
+                data = json.loads(raw)
                 
-                message = data["msg"]
-                payload = data["pl"]
+                message = data[self.config.message_ident]
+                payload = data[self.config.payload_ident] if self.config.payload_ident in data else None
                 
-                logger.debug(f"message {message} with payload {payload}")
+                if message in self.on_message_callbacks:
+                    logger.info(f"message {message} with payload {payload} sending to callback")
+                    message_callback = self.on_message_callbacks[message]
+                    await message_callback(sid, payload)
+                else:
+                    logger.info(f"message {message} with payload {payload} but no takers")
                 
-                message_callback = self.on_message_callbacks[message]
-                message_callback(id, payload)
                 
             except websockets.exceptions.ConnectionClosedOK:
-                logger.debug(f"disonnection {socket.remote_address} with id {id}")
-                if self.on_disconnect is not None:
-                    self.on_disconnect(id)
-            
+                logger.info(f"disonnection {socket.remote_address} with sid {sid}")
+                if self.on_disconnect_callback is not None:
+                    await self.on_disconnect_callback(sid)
+                self.disconnect_sid(sid)
                 return
             
-        del(self.clients[id])
+        self.disconnect_sid(sid)
+        
+        
+    def connect_socket(self, socket):
+        sid = self.__socket_hash(socket)
+        logger.info(f"new connection {socket.remote_address} with sid {sid}")
+        self.sid_to_socket[sid] = socket
+        return sid
+    
+    def disconnect_sid(self, sid):
+        self.leave_room(sid)
+        del(self.sid_to_socket[sid])
+        
            
     def on_connect(self, callback):
         self.on_connect_callback = callback
@@ -77,47 +94,55 @@ class WebSocketServer:
     def on_message(self, message, callback):
         self.on_message_callbacks[message] = callback
         
-    async def send(self, message, id, payload = None, from_id = None):
-        data = {"msg": message, "pl": payload} 
-        if from_id is not None:
-            data["id"] = from_id
-        raw = json.dumps(data)
-        socket = self.id_to_socket[id]
+    async def send(self, message: str, sid: int, payload = None):
+        logger.info(f"send {message} to sid {sid} with payload {payload}")
+        raw = self.create_raw_content(message, payload)
+        socket = self.sid_to_socket[sid]
         await socket.send(raw)
 
-    async def broadcast(self, message, payload = None, room = None, except_id = None, from_id = None):
-        data = {"msg": message, "pl": payload}
-        if from_id is not None:
-            data["id"] = from_id
-        raw = json.dumps(data)
+    async def broadcast(self, message: str, payload = None, room = None, except_sid:int = None):
+        logger.info(f"broadcast {message} with payload {payload} to room {room} except sid {except_sid}")
+        
+        raw = self.create_raw_content(message, payload)
 
-        ids = self.id_to_socket.keys() if room is None else self.room_to_ids[room]
-        if except_id is not None:
-            ids = list(filter(lambda client: client != except_id, ids))
-        sockets = list(map(lambda id: self.id_to_socket[id], ids))
+        sids = self.sid_to_socket.keys() if room is None else self.room_to_sids[room]
+        if except_sid is not None:
+            sids = list(filter(lambda client: client != except_sid, sids))
+        sockets = list(map(lambda sid: self.id_to_socket[sid], sids))
             
         await asyncio.wait([socket.send(raw) for socket in sockets])
         
-    def join_room(self, id, room):
-        if room not in self.room_to_ids:
-            self.room_to_ids[room] = set()
         
-        if id in self.id_to_room:
-            self.leave_room(id)
+    def create_raw_content(self, message: str, payload = None):
+        data = {}
+        data[self.config.message_ident] = message
+        if payload is not None: data[self.config.payload_ident] = payload
+        return json.dumps(data)
+    
+        
+    def join_room(self, sid, room):
+        logger.info(f"join {sid} room {room}")
+        if room not in self.room_to_sids:
+            self.room_to_sids[room] = set()
+        
+        if sid in self.sid_to_room:
+            self.leave_room(sid)
             
-        self.room_to_ids[room].add(id)
-        self.id_to_room[id] = room
+        self.room_to_ids[room].add(sid)
+        self.id_to_room[sid] = room
 
-    def leave_room(self, id):
-        if id not in self.id_to_room:
+    def leave_room(self, sid):
+        logger.info(f"leave room {sid}")
+        if sid not in self.sid_to_room:
             return
-        room = self.id_to_room[id]
-        del(self.id_to_room[id])
-        self.room_to_ids[room].remove(id)
+        room = self.sid_to_room[sid]
+        del(self.sid_to_room[sid])
+        self.room_to_sids[room].remove(sid)
     
     def run(self):
-        start_server = websockets.serve(self.main_loop, "localhost", 8765)        
         
+        logger.info(f"starting server")
+        start_server = websockets.serve(self.main_loop, self.config.host, self.config.port)        
         asyncio.get_event_loop().run_until_complete(start_server)
         asyncio.get_event_loop().run_forever()
         
